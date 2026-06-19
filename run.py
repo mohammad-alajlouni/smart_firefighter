@@ -13,11 +13,17 @@ def _installed(pkg):
     except PackageNotFoundError:
         return False
 
+# Bootstrap pip if missing
+subprocess.run([sys.executable, '-m', 'ensurepip', '--upgrade'], capture_output=True)
+subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '-q',
+                '--disable-pip-version-check'], capture_output=True)
+
 missing = [p for p in REQUIRED if not _installed(p)]
 
 if missing:
     print(f'Installing {len(missing)} missing package(s): {", ".join(missing)}')
-    subprocess.run([sys.executable, '-m', 'pip', 'install', *missing, '-q', '--disable-pip-version-check'])
+    subprocess.run([sys.executable, '-m', 'pip', 'install', *missing, '-q',
+                    '--disable-pip-version-check'])
 else:
     print('All dependencies already installed.')
 
