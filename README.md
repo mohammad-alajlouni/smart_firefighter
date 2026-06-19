@@ -72,12 +72,13 @@ Web Dashboard   Logger / Analyzer
 
 ## How to Run
 
-### Step 1 — Install Python
+### Step 1 — Install Python and Git
 
-If Python is not already installed, run this command in PowerShell or Command Prompt:
+If Python or Git are not already installed, run these commands in PowerShell or Command Prompt:
 
 ```
 winget install Python.Python.3.12
+winget install Git.Git
 ```
 
 After installation, close and reopen your terminal for the changes to take effect.
