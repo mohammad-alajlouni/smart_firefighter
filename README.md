@@ -74,11 +74,13 @@ Web Dashboard   Logger / Analyzer
 
 ### Step 1 — Install Python
 
-If Python is not already installed, download it from the official website:
+If Python is not already installed, run this command in PowerShell or Command Prompt:
 
-**https://www.python.org/downloads/**
+```
+winget install Python.Python.3.12
+```
 
-Download the latest **Python 3.10+** installer, run it, and make sure to check **"Add Python to PATH"** during installation.
+After installation, close and reopen your terminal for the changes to take effect.
 
 ---
 
