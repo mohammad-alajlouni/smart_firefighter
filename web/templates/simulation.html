@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulation Lab &mdash; Smart Firefighter</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/css/simulation.css">
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-title">
+      <h1>Smart Firefighter Wearable System</h1>
+      <p>IoT and LoRa Communication &mdash; Simulation Lab</p>
+    </div>
+    <div class="header-badges">
+      <span class="ws-status-bar" style="margin:0;">
+        <div class="ws-dot" id="ws-dot"></div>
+        <span class="ws-label" style="font-size:.72rem; color:var(--gray-400);">Connecting...</span>
+      </span>
+      <span class="badge"><span class="label">Broker</span><span class="value">{{ broker }}:{{ port }}</span></span>
+      <span class="badge"><span class="label">Topic</span><span class="value">{{ topic }}</span></span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────────── -->
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="/"            class="nav-link">Dashboard</a>
+    <a href="/simulation"  class="nav-link active">Simulation Lab</a>
+    <a href="/logs"        class="nav-link">Logs</a>
+    <a href="/reports"     class="nav-link">Reports</a>
+  </div>
+</nav>
+
+<!-- ── Page ────────────────────────────────────────────────────────────────── -->
+<main class="page-content" style="max-width:1600px;">
+
+  <!-- Architecture note -->
+  <div class="arch-note-bar">
+    <span>
+      <strong>Academic Simulation Notice:</strong>
+      MQTT is used in this project as a <strong>software-level emulation</strong> of the logical data flow of LoRa communication.
+      It does not simulate LoRa physical-layer characteristics (RF range, signal attenuation, wall penetration, or antenna gain).
+      In a production system the ESP32 would use a LoRa radio module to reach a LoRa gateway, which then forwards data via MQTT to the cloud.
+    </span>
+  </div>
+
+  <!-- ── Simulation Controls Bar ─────────────────────────────────────────── -->
+  <div class="sim-controls-bar">
+
+    <select id="sim-scenario-select">
+      {% for s in scenarios %}
+      <option value="{{ s }}">{{ s.replace('_', ' ').title() }}</option>
+      {% endfor %}
+    </select>
+
+    <button class="btn btn-sim-start" id="sim-btn-start">&#9654; Start</button>
+    <button class="btn btn-sim-pause" id="sim-btn-pause" disabled>&#9646;&#9646; Pause</button>
+    <button class="btn btn-sim-step"  id="sim-btn-step">&#x25B6;&#x2502; Step</button>
+    <button class="btn btn-sim-stop"  id="sim-btn-stop"  disabled>&#9632; Stop</button>
+    <button class="btn btn-sim-reset" id="sim-btn-reset">&#8635; Reset</button>
+    <button class="btn btn-outline btn-sm" id="sim-btn-pub-once">Publish Once</button>
+
+    <div class="sim-step-label">
+      <span style="font-size:.7rem; color:var(--gray-400);">STEP:</span>
+      <span class="sim-step-name" id="sim-step-name">Stopped</span>
+      <span class="sim-cycle-counter" id="sim-cycle-count">Cycle #0</span>
+    </div>
+
+    <div style="margin-left:auto; display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:.72rem; color:var(--gray-400);">
+      <span>Readings: <strong id="sim-total">0</strong></span>
+      <span>Warn: <strong id="sim-warn" style="color:#ca8a04;">0</strong></span>
+      <span>Danger: <strong id="sim-danger" style="color:#dc2626;">0</strong></span>
+      <span>Falls: <strong id="sim-fall" style="color:#7c3aed;">0</strong></span>
+      <div class="sim-status-indicator stopped" id="sim-running-ind" style="font-size:.72rem; padding:4px 10px;">
+        <div class="dot"></div>
+        <span id="sim-running-text">Stopped</span>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Main Grid: Circuit | Process Flow ─────────────────────────────── -->
+  <div class="sim-main-grid">
+
+    <!-- LEFT: Hardware Circuit SVG Viewer -->
+    <div class="sim-panel">
+      <div class="panel-header">
+        <span class="ph-dot green"></span>
+        Circuit Diagram &mdash; ESP32 Wearable Unit
+        <span style="margin-left:auto; font-size:.6rem; color:var(--gray-400);">
+          ESP32 &bull; DS18B20 &bull; MPU6050 &bull; MQ-7 &bull; MAX30102 &bull; SSD1306
+        </span>
+      </div>
+
+      <div class="circuit-container">
+        <!-- ═══════════════════════════════════════════════════════════════════
+             INLINE SVG CIRCUIT DIAGRAM
+             ViewBox: 0 0 940 590
+             Layout: Left sensors | ESP32 board (center) | Right outputs
+             ═══════════════════════════════════════════════════════════════════ -->
+        <svg id="circuit-svg" viewBox="0 0 940 590"
+             xmlns="http://www.w3.org/2000/svg"
+             style="width:100%; display:block; background:#070e1a;">
+
+          <defs>
+            <!-- Grid pattern -->
+            <pattern id="grid-pat" width="20" height="20" patternUnits="userSpaceOnUse">
+              <path d="M20 0L0 0 0 20" fill="none" stroke="#0e1f35" stroke-width="0.5"/>
+            </pattern>
+            <!-- Glow filter -->
+            <filter id="glow-active" x="-30%" y="-30%" width="160%" height="160%">
+              <feGaussianBlur stdDeviation="4" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+            <filter id="glow-led" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="5" result="blur"/>
+              <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+            </filter>
+          </defs>
+
+          <!-- Background grid -->
+          <rect width="940" height="590" fill="#070e1a"/>
+          <rect width="940" height="590" fill="url(#grid-pat)"/>
+
+          <!-- Title bar -->
+          <text x="470" y="16" text-anchor="middle" fill="#1a3050"
+                font-family="Courier New, monospace" font-size="9" letter-spacing="3" font-weight="bold">
+            SMART FIREFIGHTER WEARABLE — HARDWARE CIRCUIT DIAGRAM
+          </text>
+
+          <!-- ── SECTION LABELS ────────────────────────────────────────── -->
+          <text x="110" y="35" text-anchor="middle" fill="#14284a"
+                font-family="Courier New, monospace" font-size="8" letter-spacing="2">SENSORS</text>
+          <text x="470" y="35" text-anchor="middle" fill="#14284a"
+                font-family="Courier New, monospace" font-size="8" letter-spacing="2">PROCESSING UNIT</text>
+          <text x="815" y="35" text-anchor="middle" fill="#14284a"
+                font-family="Courier New, monospace" font-size="8" letter-spacing="2">OUTPUT DEVICES</text>
+
+          <!-- ────────────────────────────────────────────────────────────
+               WIRES — drawn before components so they appear underneath
+               ──────────────────────────────────────────────────────────── -->
+
+          <!-- I2C SDA Bus (blue #3b82f6) — shared by MAX30102, MPU6050, OLED -->
+          <!-- Left SDA bus vertical bar at x=235 from y=152 to y=340 -->
+          <line id="wire-sda-bus" x1="235" y1="152" x2="235" y2="340"
+                stroke="#1e3d6e" stroke-width="2" stroke-dasharray="4,3" data-base-width="2" stroke-opacity="0.5"/>
+          <!-- ESP32 GPIO21 to left SDA bus -->
+          <polyline id="wire-sda-left" points="338,222 235,222"
+                stroke="#2563eb" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+          <!-- MAX30102 SDA to bus -->
+          <polyline points="235,152 180,152"
+                stroke="#2563eb" stroke-width="1.5" fill="none" stroke-opacity="0.5"/>
+          <!-- MPU6050 SDA to bus -->
+          <polyline points="235,315 180,315"
+                stroke="#2563eb" stroke-width="1.5" fill="none" stroke-opacity="0.5"/>
+          <!-- OLED SDA from ESP32 right to OLED -->
+          <polyline id="wire-sda-right" points="533,222 560,222 560,130"
+                stroke="#2563eb" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- I2C SCL Bus (cyan #06b6d4) -->
+          <line id="wire-scl-bus" x1="248" y1="175" x2="248" y2="360"
+                stroke="#064a5e" stroke-width="2" stroke-dasharray="4,3" data-base-width="2" stroke-opacity="0.5"/>
+          <!-- ESP32 GPIO22 to left SCL bus -->
+          <polyline id="wire-scl-left" points="338,246 248,246"
+                stroke="#06b6d4" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+          <!-- MAX30102 SCL to bus -->
+          <polyline points="248,175 180,175"
+                stroke="#06b6d4" stroke-width="1.5" fill="none" stroke-opacity="0.5"/>
+          <!-- MPU6050 SCL to bus -->
+          <polyline points="248,338 180,338"
+                stroke="#06b6d4" stroke-width="1.5" fill="none" stroke-opacity="0.5"/>
+          <!-- OLED SCL from ESP32 right -->
+          <polyline id="wire-scl-right" points="533,246 572,246 572,152"
+                stroke="#06b6d4" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- DS18B20 1-Wire (orange #f97316) GPIO4 -->
+          <polyline id="wire-1wire" points="338,176 260,176 260,52 200,52"
+                stroke="#f97316" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- MQ-7 ADC (purple #a855f7) GPIO34 -->
+          <polyline id="wire-adc" points="338,400 265,400 265,478 180,478"
+                stroke="#a855f7" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- Buzzer (orange #fb923c) GPIO18 -->
+          <polyline id="wire-buzzer" points="533,295 555,295"
+                stroke="#fb923c" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- LED Green (green #22c55e) GPIO27 -->
+          <polyline id="wire-led-g" points="533,355 555,355"
+                stroke="#22c55e" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- LED Yellow (yellow #eab308) GPIO26 -->
+          <polyline id="wire-led-y" points="533,378 546,378 546,410 555,410"
+                stroke="#eab308" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- LED Red (red #ef4444) GPIO25 -->
+          <polyline id="wire-led-r" points="533,402 549,402 549,463 555,463"
+                stroke="#ef4444" stroke-width="2" fill="none" stroke-opacity="0.7"
+                data-base-width="2"/>
+
+          <!-- GND bus lines (dark gray) -->
+          <line x1="338" y1="500" x2="180" y2="500" stroke="#374151" stroke-width="1.2" stroke-opacity="0.4"/>
+          <line x1="533" y1="500" x2="680" y2="500" stroke="#374151" stroke-width="1.2" stroke-opacity="0.4"/>
+
+          <!-- 3V3 bus lines (red) -->
+          <line x1="338" y1="95"  x2="235" y2="95"  stroke="#dc2626" stroke-width="1.2" stroke-opacity="0.4"/>
+          <line x1="533" y1="95"  x2="620" y2="95"  stroke="#dc2626" stroke-width="1.2" stroke-opacity="0.4"/>
+
+          <!-- ────────────────────────────────────────────────────────────
+               ESP32 BOARD (center)
+               Rect: x=338, y=65, w=195, h=480
+               ──────────────────────────────────────────────────────────── -->
+          <g id="circ-esp32">
+            <!-- PCB body -->
+            <rect x="338" y="65" width="195" height="480" rx="5"
+                  fill="#0a1f0e" stroke="#1a5c22" stroke-width="2"/>
+            <!-- PCB texture -->
+            <rect x="348" y="75" width="175" height="460" rx="3"
+                  fill="none" stroke="#0f2b14" stroke-width="1"/>
+            <!-- Chip (ESP32 module) -->
+            <rect x="378" y="210" width="115" height="85" rx="3"
+                  fill="#0d1610" stroke="#1a3d20" stroke-width="1.5"/>
+            <text x="435" y="250" text-anchor="middle" fill="#1a5c22"
+                  font-family="Courier New, monospace" font-size="7.5" font-weight="bold">ESP32-WROOM-32</text>
+            <text x="435" y="262" text-anchor="middle" fill="#0f3016"
+                  font-family="Courier New, monospace" font-size="6">240MHz Dual-Core</text>
+            <!-- WiFi antenna stub -->
+            <rect x="428" y="200" width="16" height="12" rx="1" fill="#0d1610" stroke="#1a3d20"/>
+            <text x="436" y="210" text-anchor="middle" fill="#0d2a10" font-size="6" font-family="monospace">ANT</text>
+
+            <!-- Board label -->
+            <text x="435" y="85" text-anchor="middle" fill="#1a5c22"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold" letter-spacing="1">ESP32 DevKit V1</text>
+            <text x="435" y="96" text-anchor="middle" fill="#0d2a14"
+                  font-family="Courier New, monospace" font-size="6.5">LoRa Wearable Processor</text>
+
+            <!-- Status label -->
+            <text id="svgval-status" x="435" y="540" text-anchor="middle" fill="#1a5c22"
+                  font-family="Courier New, monospace" font-size="9" font-weight="bold">--</text>
+
+            <!-- LEFT SIDE PINS (exit at x=338) ─────────────── -->
+            <!-- 3V3 -->
+            <rect x="323" y="90" width="15" height="8" rx="1" fill="#c0392b"/>
+            <text x="336" y="97" text-anchor="end" fill="#6b2020"
+                  font-family="Courier New, monospace" font-size="6">3V3</text>
+            <!-- GND -->
+            <rect x="323" y="105" width="15" height="8" rx="1" fill="#374151"/>
+            <text x="336" y="112" text-anchor="end" fill="#2d3748"
+                  font-family="Courier New, monospace" font-size="6">GND</text>
+            <!-- GPIO4 (DS18B20) -->
+            <rect x="323" y="172" width="15" height="8" rx="1" fill="#713f12"/>
+            <text x="336" y="179" text-anchor="end" fill="#92400e"
+                  font-family="Courier New, monospace" font-size="6">GPIO4</text>
+            <!-- GPIO21 (SDA) -->
+            <rect x="323" y="218" width="15" height="8" rx="1" fill="#1e3d6e"/>
+            <text x="336" y="225" text-anchor="end" fill="#1e40af"
+                  font-family="Courier New, monospace" font-size="6">GPIO21</text>
+            <!-- GPIO22 (SCL) -->
+            <rect x="323" y="242" width="15" height="8" rx="1" fill="#064a5e"/>
+            <text x="336" y="249" text-anchor="end" fill="#0e7490"
+                  font-family="Courier New, monospace" font-size="6">GPIO22</text>
+            <!-- GPIO34 (ADC MQ-7) -->
+            <rect x="323" y="396" width="15" height="8" rx="1" fill="#4a1d96"/>
+            <text x="336" y="403" text-anchor="end" fill="#6d28d9"
+                  font-family="Courier New, monospace" font-size="6">GPIO34</text>
+            <!-- GND2 -->
+            <rect x="323" y="496" width="15" height="8" rx="1" fill="#374151"/>
+            <text x="336" y="503" text-anchor="end" fill="#2d3748"
+                  font-family="Courier New, monospace" font-size="6">GND</text>
+
+            <!-- RIGHT SIDE PINS (exit at x=533) ────────────── -->
+            <!-- 3V3 -->
+            <rect x="533" y="90" width="15" height="8" rx="1" fill="#c0392b"/>
+            <text x="535" y="97" fill="#6b2020"
+                  font-family="Courier New, monospace" font-size="6">3V3</text>
+            <!-- GND -->
+            <rect x="533" y="105" width="15" height="8" rx="1" fill="#374151"/>
+            <text x="535" y="112" fill="#2d3748"
+                  font-family="Courier New, monospace" font-size="6">GND</text>
+            <!-- GPIO21 (SDA for OLED) -->
+            <rect x="533" y="218" width="15" height="8" rx="1" fill="#1e3d6e"/>
+            <text x="535" y="225" fill="#1e40af"
+                  font-family="Courier New, monospace" font-size="6">SDA</text>
+            <!-- GPIO22 (SCL for OLED) -->
+            <rect x="533" y="242" width="15" height="8" rx="1" fill="#064a5e"/>
+            <text x="535" y="249" fill="#0e7490"
+                  font-family="Courier New, monospace" font-size="6">SCL</text>
+            <!-- GPIO18 (Buzzer) -->
+            <rect x="533" y="291" width="15" height="8" rx="1" fill="#713f12"/>
+            <text x="535" y="298" fill="#92400e"
+                  font-family="Courier New, monospace" font-size="6">GPIO18</text>
+            <!-- GPIO27 (Green LED) -->
+            <rect x="533" y="351" width="15" height="8" rx="1" fill="#14532d"/>
+            <text x="535" y="358" fill="#15803d"
+                  font-family="Courier New, monospace" font-size="6">GPIO27</text>
+            <!-- GPIO26 (Yellow LED) -->
+            <rect x="533" y="374" width="15" height="8" rx="1" fill="#713f00"/>
+            <text x="535" y="381" fill="#a16207"
+                  font-family="Courier New, monospace" font-size="6">GPIO26</text>
+            <!-- GPIO25 (Red LED) -->
+            <rect x="533" y="398" width="15" height="8" rx="1" fill="#7f1d1d"/>
+            <text x="535" y="405" fill="#b91c1c"
+                  font-family="Courier New, monospace" font-size="6">GPIO25</text>
+            <!-- GND2 -->
+            <rect x="533" y="496" width="15" height="8" rx="1" fill="#374151"/>
+            <text x="535" y="503" fill="#2d3748"
+                  font-family="Courier New, monospace" font-size="6">GND</text>
+          </g>
+
+          <!-- ────────────────────────────────────────────────────────────
+               LEFT SENSORS
+               ──────────────────────────────────────────────────────────── -->
+
+          <!-- DS18B20 Temperature Sensor — TO-92 probe package -->
+          <g id="circ-ds18b20">
+            <rect x="20" y="25" width="180" height="60" rx="5"
+                  fill="#1a1000" stroke="#713f12" stroke-width="1.5"/>
+            <rect x="28" y="32" width="164" height="46" rx="3"
+                  fill="#120c00" stroke="#4a2800" stroke-width="1"/>
+            <!-- TO-92 package body (flat-face semicircle) -->
+            <rect x="32" y="50" width="22" height="16" rx="1" fill="#1a0a00" stroke="#c65d10" stroke-width="1.5"/>
+            <path d="M32,50 A11,11 0 0,1 54,50" fill="#2a1200" stroke="#c65d10" stroke-width="1.5"/>
+            <!-- Three legs -->
+            <line x1="36" y1="66" x2="36" y2="74" stroke="#8b7355" stroke-width="1.5"/>
+            <line x1="43" y1="66" x2="43" y2="74" stroke="#8b7355" stroke-width="1.5"/>
+            <line x1="50" y1="66" x2="50" y2="74" stroke="#8b7355" stroke-width="1.5"/>
+            <!-- Labels (to right of probe) -->
+            <text x="62" y="46" fill="#d97706"
+                  font-family="Courier New, monospace" font-size="9" font-weight="bold">DS18B20</text>
+            <text x="62" y="57" fill="#713f12"
+                  font-family="Courier New, monospace" font-size="6.5">Body Temp · 1-Wire · GPIO4</text>
+            <!-- Live value -->
+            <text id="svgval-temp" x="62" y="70" fill="#f97316"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">-- °C</text>
+            <!-- DATA pin marker -->
+            <rect x="198" y="47" width="8" height="8" rx="1" fill="#713f12"/>
+            <text x="200" y="54" fill="#92400e" font-family="Courier New" font-size="5">D</text>
+          </g>
+
+          <!-- MAX30102 Heart Rate Sensor -->
+          <g id="circ-max30102">
+            <rect x="20" y="115" width="180" height="85" rx="5"
+                  fill="#0f0a2e" stroke="#4338ca" stroke-width="1.5"/>
+            <rect x="28" y="123" width="164" height="69" rx="3"
+                  fill="#080620" stroke="#312e81" stroke-width="1"/>
+            <!-- Optical sensor circles -->
+            <circle cx="42" cy="148" r="7" fill="#1e1b4b" stroke="#4338ca" stroke-width="1"/>
+            <circle cx="42" cy="168" r="7" fill="#1e1b4b" stroke="#7c3aed" stroke-width="1"/>
+            <text x="56" y="140" fill="#4f46e5"
+                  font-family="Courier New, monospace" font-size="9" font-weight="bold">MAX30102</text>
+            <text x="56" y="152" fill="#312e81"
+                  font-family="Courier New, monospace" font-size="6.5">Pulse Oximeter / HR</text>
+            <text x="56" y="163" fill="#312e81"
+                  font-family="Courier New, monospace" font-size="6">Interface: I2C (0x57)</text>
+            <text x="56" y="174" fill="#4c1d95"
+                  font-family="Courier New, monospace" font-size="5.5" font-style="italic">SW simulation only · no Wokwi part</text>
+            <!-- Live value -->
+            <text id="svgval-hr" x="110" y="190" text-anchor="middle" fill="#818cf8"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">-- BPM</text>
+            <!-- SDA/SCL pins -->
+            <rect x="198" y="148" width="8" height="7" rx="1" fill="#1e3d6e"/>
+            <text x="200" y="154" fill="#1e40af" font-family="Courier New" font-size="4.5">SDA</text>
+            <rect x="198" y="171" width="8" height="7" rx="1" fill="#064a5e"/>
+            <text x="200" y="177" fill="#0e7490" font-family="Courier New" font-size="4.5">SCL</text>
+          </g>
+
+          <!-- MPU6050 IMU Sensor -->
+          <g id="circ-mpu6050">
+            <rect x="20" y="285" width="180" height="85" rx="5"
+                  fill="#0a1e0a" stroke="#15803d" stroke-width="1.5"/>
+            <rect x="28" y="293" width="164" height="69" rx="3"
+                  fill="#060f06" stroke="#14532d" stroke-width="1"/>
+            <!-- Chip representation -->
+            <rect x="32" y="308" width="28" height="28" rx="2" fill="#0d1f0d" stroke="#166534"/>
+            <text x="46" y="321" text-anchor="middle" fill="#15803d"
+                  font-family="Courier New" font-size="5">IMU</text>
+            <text x="46" y="331" text-anchor="middle" fill="#14532d"
+                  font-family="Courier New" font-size="4.5">6DOF</text>
+            <text x="75" y="310" fill="#16a34a"
+                  font-family="Courier New, monospace" font-size="9" font-weight="bold">MPU6050</text>
+            <text x="75" y="322" fill="#14532d"
+                  font-family="Courier New, monospace" font-size="6.5">6-DOF IMU Sensor</text>
+            <text x="75" y="333" fill="#14532d"
+                  font-family="Courier New, monospace" font-size="6">Fall Detection (I2C 0x68)</text>
+            <!-- Live value -->
+            <text id="svgval-fall" x="110" y="358" text-anchor="middle" fill="#4ade80"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">Normal</text>
+            <!-- SDA/SCL pins -->
+            <rect x="198" y="310" width="8" height="7" rx="1" fill="#1e3d6e"/>
+            <text x="200" y="316" fill="#1e40af" font-family="Courier New" font-size="4.5">SDA</text>
+            <rect x="198" y="333" width="8" height="7" rx="1" fill="#064a5e"/>
+            <text x="200" y="339" fill="#0e7490" font-family="Courier New" font-size="4.5">SCL</text>
+          </g>
+
+          <!-- MQ-7 CO Gas Sensor — Wokwi: wokwi-potentiometer substitute -->
+          <g id="circ-mq7">
+            <rect x="20" y="450" width="180" height="80" rx="5"
+                  fill="#1a0a1e" stroke="#7e22ce" stroke-width="1.5"/>
+            <rect x="28" y="458" width="164" height="64" rx="3"
+                  fill="#0f0614" stroke="#581c87" stroke-width="1"/>
+            <!-- Potentiometer body (square ceramic block) -->
+            <rect x="31" y="470" width="26" height="20" rx="2" fill="#2d1f3d" stroke="#7e22ce" stroke-width="1.5"/>
+            <!-- Potentiometer knob (circle on top) -->
+            <circle cx="44" cy="467" r="6" fill="#3b2d52" stroke="#9333ea" stroke-width="1.5"/>
+            <!-- Knob indicator line (pointing up = mid-range) -->
+            <line x1="44" y1="462" x2="44" y2="467" stroke="#c084fc" stroke-width="1.5"/>
+            <!-- Three pins at bottom -->
+            <line x1="36" y1="490" x2="36" y2="498" stroke="#8b7355" stroke-width="1.5"/>
+            <line x1="44" y1="490" x2="44" y2="498" stroke="#8b7355" stroke-width="1.5"/>
+            <line x1="52" y1="490" x2="52" y2="498" stroke="#8b7355" stroke-width="1.5"/>
+            <!-- Labels -->
+            <text x="64" y="474" fill="#9333ea"
+                  font-family="Courier New, monospace" font-size="9" font-weight="bold">MQ-7</text>
+            <text x="64" y="484" fill="#581c87"
+                  font-family="Courier New, monospace" font-size="6">CO Sensor (Wokwi: potentiometer)</text>
+            <text x="64" y="494" fill="#581c87"
+                  font-family="Courier New, monospace" font-size="6">Analog SIG → GPIO34 (ADC)</text>
+            <!-- Live value -->
+            <text id="svgval-co" x="110" y="521" text-anchor="middle" fill="#c084fc"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">-- ppm</text>
+            <!-- SIG pin -->
+            <rect x="198" y="486" width="8" height="7" rx="1" fill="#4a1d96"/>
+            <text x="199" y="492" fill="#6d28d9" font-family="Courier New" font-size="4.5">SIG</text>
+          </g>
+
+          <!-- ────────────────────────────────────────────────────────────
+               RIGHT OUTPUT DEVICES
+               ──────────────────────────────────────────────────────────── -->
+
+          <!-- OLED Display SSD1306 -->
+          <g id="circ-oled">
+            <rect x="554" y="80" width="195" height="110" rx="5"
+                  fill="#05080f" stroke="#1d4ed8" stroke-width="1.5"/>
+            <!-- Screen bezel -->
+            <rect x="562" y="88" width="179" height="94" rx="3"
+                  fill="#030508" stroke="#1e3a5f" stroke-width="1"/>
+            <!-- OLED screen area -->
+            <rect x="570" y="94" width="163" height="82" rx="2"
+                  fill="#0a1628" stroke="#0c2040" stroke-width="1"/>
+            <!-- Live OLED text (colored by JS) -->
+            <text id="svg-oled-screen" x="651" y="128" text-anchor="middle"
+                  fill="#1a3a5e" font-family="Courier New, monospace" font-size="13" font-weight="bold">
+              STANDBY
+            </text>
+            <text id="svgval-oled" x="651" y="145" text-anchor="middle"
+                  fill="#0d2040" font-family="Courier New, monospace" font-size="8">--</text>
+            <!-- SSD1306 label -->
+            <text x="651" y="173" text-anchor="middle" fill="#1d4ed8"
+                  font-family="Courier New, monospace" font-size="7.5" font-weight="bold">SSD1306 OLED 128×64</text>
+            <!-- I2C pins -->
+            <rect x="548" y="126" width="8" height="7" rx="1" fill="#1e3d6e"/>
+            <text x="550" y="132" fill="#1e40af" font-family="Courier New" font-size="4.5">SDA</text>
+            <rect x="548" y="148" width="8" height="7" rx="1" fill="#064a5e"/>
+            <text x="550" y="154" fill="#0e7490" font-family="Courier New" font-size="4.5">SCL</text>
+          </g>
+
+          <!-- Buzzer -->
+          <g id="circ-buzzer">
+            <rect x="554" y="270" width="155" height="70" rx="5"
+                  fill="#120800" stroke="#f97316" stroke-width="1.5"/>
+            <!-- Buzzer body (circle) -->
+            <circle cx="582" cy="305" r="22" fill="#1a0e00" stroke="#c2410c" stroke-width="1.5"/>
+            <circle cx="582" cy="305" r="12" fill="#0f0700" stroke="#f97316" stroke-width="1"/>
+            <circle cx="582" cy="305" r="4" fill="#f97316"/>
+            <text x="615" y="299" fill="#f97316"
+                  font-family="Courier New, monospace" font-size="9" font-weight="bold">Buzzer</text>
+            <text x="615" y="312" fill="#9a3412"
+                  font-family="Courier New, monospace" font-size="6.5">Alert (GPIO18)</text>
+            <text id="compval-buzzer" x="615" y="325" fill="#f97316"
+                  font-family="Courier New, monospace" font-size="7.5" font-weight="bold">OFF</text>
+            <!-- Pin marker -->
+            <rect x="547" y="291" width="8" height="7" rx="1" fill="#713f12"/>
+            <text x="549" y="297" fill="#92400e" font-family="Courier New" font-size="4.5">PIN</text>
+          </g>
+
+          <!-- LED Green -->
+          <g id="circ-led-green">
+            <rect x="554" y="340" width="155" height="42" rx="4"
+                  fill="#010d02" stroke="#166534" stroke-width="1.5"/>
+            <!-- LED body -->
+            <ellipse cx="576" cy="361" rx="12" ry="14" fill="#010d02" stroke="#16a34a" stroke-width="1.5"/>
+            <circle id="svgled-green" cx="576" cy="361" r="7" fill="#1f2937"/>
+            <text x="598" y="357" fill="#16a34a"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">LED Green</text>
+            <text x="598" y="368" fill="#14532d"
+                  font-family="Courier New, monospace" font-size="6.5">OK Status &bull; GPIO27</text>
+            <text id="compval-led-g" x="598" y="379" fill="#4ade80"
+                  font-family="Courier New, monospace" font-size="6.5" font-weight="bold">OFF</text>
+            <!-- Anode pin -->
+            <rect x="547" y="357" width="8" height="7" rx="1" fill="#14532d"/>
+          </g>
+
+          <!-- LED Yellow -->
+          <g id="circ-led-yellow">
+            <rect x="554" y="395" width="155" height="42" rx="4"
+                  fill="#0d0900" stroke="#a16207" stroke-width="1.5"/>
+            <ellipse cx="576" cy="416" rx="12" ry="14" fill="#0d0900" stroke="#ca8a04" stroke-width="1.5"/>
+            <circle id="svgled-yellow" cx="576" cy="416" r="7" fill="#1f2937"/>
+            <text x="598" y="412" fill="#ca8a04"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">LED Yellow</text>
+            <text x="598" y="423" fill="#713f00"
+                  font-family="Courier New, monospace" font-size="6.5">WARNING &bull; GPIO26</text>
+            <text id="compval-led-y" x="598" y="434" fill="#fbbf24"
+                  font-family="Courier New, monospace" font-size="6.5" font-weight="bold">OFF</text>
+            <rect x="547" y="412" width="8" height="7" rx="1" fill="#713f00"/>
+          </g>
+
+          <!-- LED Red -->
+          <g id="circ-led-red">
+            <rect x="554" y="450" width="155" height="42" rx="4"
+                  fill="#0d0000" stroke="#b91c1c" stroke-width="1.5"/>
+            <ellipse cx="576" cy="471" rx="12" ry="14" fill="#0d0000" stroke="#dc2626" stroke-width="1.5"/>
+            <circle id="svgled-red" cx="576" cy="471" r="7" fill="#1f2937"/>
+            <text x="598" y="467" fill="#dc2626"
+                  font-family="Courier New, monospace" font-size="8" font-weight="bold">LED Red</text>
+            <text x="598" y="478" fill="#7f1d1d"
+                  font-family="Courier New, monospace" font-size="6.5">DANGER &bull; GPIO25</text>
+            <text id="compval-led-r" x="598" y="489" fill="#f87171"
+                  font-family="Courier New, monospace" font-size="6.5" font-weight="bold">OFF</text>
+            <rect x="547" y="467" width="8" height="7" rx="1" fill="#7f1d1d"/>
+          </g>
+
+          <!-- I2C Bus label annotation -->
+          <text x="223" y="260" text-anchor="middle" fill="#1e3d6e"
+                font-family="Courier New, monospace" font-size="6.5" transform="rotate(-90,223,260)">I2C BUS</text>
+
+          <!-- Legend (bottom right) -->
+          <g transform="translate(750, 500)">
+            <rect x="0" y="0" width="175" height="80" rx="4" fill="#0a0e18" stroke="#1e2d44"/>
+            <text x="87" y="14" text-anchor="middle" fill="#2d4a6e"
+                  font-family="Courier New, monospace" font-size="7" font-weight="bold" letter-spacing="2">WIRE LEGEND</text>
+            <circle cx="14" cy="26" r="4" fill="#2563eb"/>
+            <text x="22" y="29" fill="#4b6280" font-family="Courier New" font-size="7">I2C SDA (GPIO21)</text>
+            <circle cx="14" cy="40" r="4" fill="#06b6d4"/>
+            <text x="22" y="43" fill="#4b6280" font-family="Courier New" font-size="7">I2C SCL (GPIO22)</text>
+            <circle cx="14" cy="54" r="4" fill="#f97316"/>
+            <text x="22" y="57" fill="#4b6280" font-family="Courier New" font-size="7">1-Wire / Buzzer</text>
+            <circle cx="14" cy="68" r="4" fill="#a855f7"/>
+            <text x="22" y="71" fill="#4b6280" font-family="Courier New" font-size="7">ADC (Pot./MQ-7 · GPIO34)</text>
+          </g>
+
+        </svg>
+        <!-- ═══════════════════════════════════ END SVG ═══════════════════ -->
+      </div><!-- circuit-container -->
+
+      <!-- Wiring reference table toggle -->
+      <div class="wiring-section" style="padding:10px 14px;">
+        <button class="wiring-toggle-btn" id="wiring-toggle-btn">&#9660; Show Wiring Reference</button>
+        <div class="wiring-table-wrap" id="wiring-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Component</th><th>Signal</th><th>ESP32 GPIO</th><th>Wire Colour</th><th>Protocol</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>MAX30102</td><td>SDA</td><td>GPIO21</td>
+                  <td><span class="wire-dot wire-blue"></span>Blue</td><td>I2C (0x57)</td></tr>
+              <tr><td>MAX30102</td><td>SCL</td><td>GPIO22</td>
+                  <td><span class="wire-dot wire-cyan"></span>Cyan</td><td>I2C</td></tr>
+              <tr><td>MPU6050</td><td>SDA</td><td>GPIO21 (shared)</td>
+                  <td><span class="wire-dot wire-blue"></span>Blue</td><td>I2C (0x68)</td></tr>
+              <tr><td>MPU6050</td><td>SCL</td><td>GPIO22 (shared)</td>
+                  <td><span class="wire-dot wire-cyan"></span>Cyan</td><td>I2C</td></tr>
+              <tr><td>SSD1306 OLED</td><td>SDA</td><td>GPIO21 (shared)</td>
+                  <td><span class="wire-dot wire-blue"></span>Blue</td><td>I2C (0x3C)</td></tr>
+              <tr><td>SSD1306 OLED</td><td>SCL</td><td>GPIO22 (shared)</td>
+                  <td><span class="wire-dot wire-cyan"></span>Cyan</td><td>I2C</td></tr>
+              <tr><td>DS18B20</td><td>DATA</td><td>GPIO4 + 4.7kΩ pull-up</td>
+                  <td><span class="wire-dot wire-orange"></span>Orange</td><td>1-Wire</td></tr>
+              <tr><td>MQ-7 / Pot.</td><td>SIG (AOUT)</td><td>GPIO34 (ADC input)</td>
+                  <td><span class="wire-dot wire-purple"></span>Purple</td><td>Analog (Wokwi: potentiometer)</td></tr>
+              <tr><td>Buzzer</td><td>+ PIN</td><td>GPIO18</td>
+                  <td><span class="wire-dot wire-orange"></span>Orange</td><td>Digital PWM</td></tr>
+              <tr><td>LED Green</td><td>Anode</td><td>GPIO27 + 220Ω</td>
+                  <td><span class="wire-dot wire-green"></span>Green</td><td>Digital</td></tr>
+              <tr><td>LED Yellow</td><td>Anode</td><td>GPIO26 + 220Ω</td>
+                  <td><span class="wire-dot wire-yellow"></span>Yellow</td><td>Digital</td></tr>
+              <tr><td>LED Red</td><td>Anode</td><td>GPIO25 + 220Ω</td>
+                  <td><span class="wire-dot wire-red"></span>Red</td><td>Digital</td></tr>
+              <tr><td>All sensors</td><td>VCC</td><td>3V3 rail</td>
+                  <td><span class="wire-dot wire-red"></span>Red</td><td>Power</td></tr>
+              <tr><td>All sensors</td><td>GND</td><td>GND rail</td>
+                  <td><span class="wire-dot wire-black"></span>Black</td><td>Ground</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- Left panel end -->
+
+    <!-- RIGHT: Process Flow + JSON display -->
+    <div class="sim-panel" style="display:flex; flex-direction:column;">
+
+      <!-- Process flow -->
+      <div class="panel-header">
+        <span class="ph-dot"></span>
+        System Data Flow &mdash; Step-by-Step Process
+      </div>
+      <div class="process-flow-panel" style="flex:1; overflow-y:auto;">
+        <div class="process-steps-list" id="process-steps-list">
+          <!-- Built by simulation.js buildProcessStepsList() -->
+        </div>
+        <div class="step-detail-box" id="step-detail-box">
+          Select a scenario and click <strong>Start</strong> or <strong>Step</strong> to see the live process flow.
+        </div>
+      </div>
+
+      <!-- JSON payload display -->
+      <div class="payload-panel">
+        <div class="payload-label">Current JSON Payload (MQTT / WebSocket)</div>
+        <pre class="json-display" id="json-display">{ awaiting data... }</pre>
+      </div>
+
+    </div><!-- Right panel end -->
+
+  </div><!-- sim-main-grid end -->
+
+  <!-- ── Bottom Grid: Component Status | Comm Flow | Alert Output ──────── -->
+  <div class="sim-bottom-grid">
+
+    <!-- Component live status panel -->
+    <div class="sim-panel">
+      <div class="panel-header">
+        <span class="ph-dot green"></span>
+        Component Live Status
+      </div>
+      <div class="comp-status-grid">
+
+        <div class="comp-card" id="card-max30102">
+          <div class="comp-card-name">MAX30102</div>
+          <div class="comp-card-role">Heart Rate / SpO2</div>
+          <div><span class="comp-card-value" id="compval-hr">--</span><span class="comp-card-unit">BPM</span></div>
+          <div class="comp-card-pin">I2C SDA/SCL &bull; GPIO21/22 &bull; addr 0x57</div>
+        </div>
+
+        <div class="comp-card" id="card-ds18b20">
+          <div class="comp-card-name">DS18B20</div>
+          <div class="comp-card-role">Body Temperature</div>
+          <div><span class="comp-card-value" id="compval-temp">--</span><span class="comp-card-unit">°C</span></div>
+          <div class="comp-card-pin">1-Wire DATA &bull; GPIO4 + 4.7kΩ</div>
+        </div>
+
+        <div class="comp-card" id="card-mq7">
+          <div class="comp-card-name">MQ-7</div>
+          <div class="comp-card-role">CO Gas Sensor</div>
+          <div><span class="comp-card-value" id="compval-co">--</span><span class="comp-card-unit">ppm</span></div>
+          <div class="comp-card-pin">Analog AOUT &bull; GPIO34 (ADC)</div>
+        </div>
+
+        <div class="comp-card" id="card-mpu6050">
+          <div class="comp-card-name">MPU6050</div>
+          <div class="comp-card-role">IMU / Fall Detection</div>
+          <div class="comp-card-value" id="compval-fall">--</div>
+          <div class="comp-card-pin">I2C SDA/SCL &bull; GPIO21/22 &bull; addr 0x68</div>
+        </div>
+
+        <div class="comp-card" id="card-oled">
+          <div class="comp-card-name">SSD1306 OLED</div>
+          <div class="comp-card-role">Wearable Display</div>
+          <div class="comp-card-value" id="compval-oled" style="font-size:.85rem;">--</div>
+          <div class="comp-card-pin">I2C &bull; GPIO21/22 &bull; addr 0x3C</div>
+        </div>
+
+        <div class="comp-card" id="card-buzzer">
+          <div class="comp-card-name">Buzzer</div>
+          <div class="comp-card-role">Audible Alert</div>
+          <div class="comp-card-value" id="compval-bz">--</div>
+          <div class="comp-card-pin">GPIO18 &bull; PWM</div>
+        </div>
+
+        <div class="comp-card" id="card-led-g">
+          <div class="comp-card-name">LED Green</div>
+          <div class="comp-card-role">OK Indicator</div>
+          <div class="comp-card-value" id="compval-led-g">--</div>
+          <div class="comp-card-pin">GPIO27 &bull; 220Ω</div>
+        </div>
+
+        <div class="comp-card" id="card-led-y">
+          <div class="comp-card-name">LED Yellow</div>
+          <div class="comp-card-role">Warning Indicator</div>
+          <div class="comp-card-value" id="compval-led-y">--</div>
+          <div class="comp-card-pin">GPIO26 &bull; 220Ω</div>
+        </div>
+
+        <div class="comp-card" id="card-led-r">
+          <div class="comp-card-name">LED Red</div>
+          <div class="comp-card-role">Danger Indicator</div>
+          <div class="comp-card-value" id="compval-led-r">--</div>
+          <div class="comp-card-pin">GPIO25 &bull; 220Ω</div>
+        </div>
+
+      </div>
+    </div><!-- component status panel -->
+
+    <!-- Communication flow panel -->
+    <div class="sim-panel">
+      <div class="panel-header">
+        <span class="ph-dot orange"></span>
+        Communication Flow &mdash; MQTT as LoRa Emulation
+        <span id="comm-live-badge" class="comm-status-badge" style="margin-left:auto;">idle</span>
+      </div>
+      <div class="comm-flow-container">
+        <div class="comm-nodes">
+
+          <div class="comm-node" id="cn-wearable">
+            <div class="comm-node-icon">📟</div>
+            <div class="comm-node-body">
+              <div class="comm-node-title">Wearable Unit (ESP32)</div>
+              <div class="comm-node-detail">Simulated sensor readings → JSON payload</div>
+            </div>
+          </div>
+
+          <div class="comm-arrow" id="ca-1">
+            <div class="comm-arrow-line"></div>
+            <div class="comm-arrow-head">&#x25BA;</div>
+            <div style="font-size:.62rem; color:var(--gray-400); white-space:nowrap; padding:0 4px;">MQTT PUBLISH<br>QoS=1</div>
+            <div class="comm-arrow-head">&#x25BA;</div>
+            <div class="comm-arrow-line"></div>
+          </div>
+
+          <div class="comm-node" id="cn-mqtt">
+            <div class="comm-node-icon">☁</div>
+            <div class="comm-node-body">
+              <div class="comm-node-title">MQTT Broker (LoRa Emulation)</div>
+              <div class="comm-node-detail">{{ broker }}:{{ port }}</div>
+              <div class="comm-node-detail">Topic: {{ topic }}</div>
+            </div>
+          </div>
+
+          <div class="comm-arrow" id="ca-2">
+            <div class="comm-arrow-line"></div>
+            <div class="comm-arrow-head">&#x25BA;</div>
+            <div style="font-size:.62rem; color:var(--gray-400); white-space:nowrap; padding:0 4px;">SUBSCRIBE<br>WebSocket</div>
+            <div class="comm-arrow-head">&#x25BA;</div>
+            <div class="comm-arrow-line"></div>
+          </div>
+
+          <div class="comm-node" id="cn-dashboard">
+            <div class="comm-node-icon">🖥</div>
+            <div class="comm-node-body">
+              <div class="comm-node-title">Web Dashboard (FastAPI)</div>
+              <div class="comm-node-detail">ws://127.0.0.1:8000/ws/telemetry</div>
+              <div class="comm-node-detail" id="comm-topic" style="color:#2563eb;"></div>
+            </div>
+          </div>
+
+          <div class="comm-arrow" id="ca-3">
+            <div class="comm-arrow-line"></div>
+            <div class="comm-arrow-head">&#x25BA;</div>
+            <div style="font-size:.62rem; color:var(--gray-400); white-space:nowrap; padding:0 4px;">CSV WRITE<br>data/logs/</div>
+            <div class="comm-arrow-head">&#x25BA;</div>
+            <div class="comm-arrow-line"></div>
+          </div>
+
+          <div class="comm-node" id="cn-logger">
+            <div class="comm-node-icon">💾</div>
+            <div class="comm-node-body">
+              <div class="comm-node-title">Logger / Analyzer</div>
+              <div class="comm-node-detail">CSV &bull; Session Report &bull; Charts</div>
+              <div class="comm-node-detail" id="comm-ts" style="color:#2563eb;"></div>
+            </div>
+          </div>
+
+        </div><!-- comm-nodes -->
+
+        <div class="mqtt-note">
+          <strong>Note:</strong> MQTT is used here to emulate the logical data flow of LoRa communication,
+          not the physical RF behaviour of LoRa (range, signal, walls, antenna).
+          In a real deployment: ESP32 LoRa Radio → LoRa Gateway → Cloud MQTT → Dashboard.
+        </div>
+      </div>
+    </div><!-- comm panel -->
+
+    <!-- Local Alert Visualization -->
+    <div class="sim-panel">
+      <div class="panel-header">
+        <span class="ph-dot purple"></span>
+        Wearable Alert Output &mdash; Local Device State
+      </div>
+      <div class="alert-viz-container">
+        <div class="alert-devices-sim">
+
+          <!-- OLED Display -->
+          <div>
+            <div style="font-size:.65rem; color:var(--gray-400); text-transform:uppercase; letter-spacing:.07em; margin-bottom:5px;">OLED Screen (SSD1306)</div>
+            <div class="sim-oled" id="sim-oled">
+              <span class="oled-msg">STANDBY</span>
+              <span class="oled-ff-line"></span>
+            </div>
+          </div>
+
+          <!-- LED indicators -->
+          <div class="alert-row">
+            <div class="alert-row-label">LEDs</div>
+            <div class="sim-led-group">
+              <div class="sim-led" id="sim-led-green"  title="GPIO27 — OK"></div>
+              <div class="sim-led" id="sim-led-yellow" title="GPIO26 — WARNING"></div>
+              <div class="sim-led" id="sim-led-red"    title="GPIO25 — DANGER"></div>
+            </div>
+            <div class="alert-row-state" id="alert-led-state">ALL OFF</div>
+          </div>
+
+          <!-- Buzzer -->
+          <div class="alert-row">
+            <div class="alert-row-label">Buzzer</div>
+            <div class="sim-buzzer" id="sim-buzzer">
+              <span style="font-size:.55rem; font-weight:700;">BZ</span>
+            </div>
+            <div class="alert-row-state" id="alert-bz-state">OFF</div>
+          </div>
+
+          <!-- Alert logic reference -->
+          <div style="border:1px solid var(--gray-200); border-radius:6px; padding:8px 10px; background:var(--gray-50);">
+            <div style="font-size:.62rem; color:var(--gray-400); font-weight:700; text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px;">Alert Logic</div>
+            <table style="width:100%; font-size:.62rem; font-family:'Courier New',monospace;">
+              <tr>
+                <td style="color:#15803d; padding:2px 4px;">OK</td>
+                <td style="color:var(--gray-600);">Green ON &bull; Buzzer OFF</td>
+              </tr>
+              <tr>
+                <td style="color:#a16207; padding:2px 4px;">WARNING</td>
+                <td style="color:var(--gray-600);">Yellow ON &bull; Slow Beep</td>
+              </tr>
+              <tr>
+                <td style="color:#dc2626; padding:2px 4px;">DANGER</td>
+                <td style="color:var(--gray-600);">Red ON &bull; Fast Beep</td>
+              </tr>
+              <tr>
+                <td style="color:#7c3aed; padding:2px 4px;">FALL</td>
+                <td style="color:var(--gray-600);">Red ON &bull; Fast Beep</td>
+              </tr>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </div><!-- alert panel -->
+
+  </div><!-- sim-bottom-grid end -->
+
+  <!-- ── Threshold Reference ─────────────────────────────────────────── -->
+  <div class="sim-panel" style="margin-bottom:16px;">
+    <div class="panel-header">
+      <span class="ph-dot"></span>
+      Alert Threshold Reference &mdash; Classification Logic
+    </div>
+    <div style="padding:12px 16px; overflow-x:auto;">
+      <table style="font-size:.75rem; min-width:600px;">
+        <thead>
+          <tr>
+            <th style="background:var(--gray-50); color:var(--gray-600); padding:8px 14px; border-bottom:1px solid var(--gray-200);">Parameter</th>
+            <th style="background:var(--gray-50); color:#15803d; padding:8px 14px; border-bottom:1px solid var(--gray-200);">OK</th>
+            <th style="background:var(--gray-50); color:#a16207; padding:8px 14px; border-bottom:1px solid var(--gray-200);">WARNING</th>
+            <th style="background:var(--gray-50); color:#dc2626; padding:8px 14px; border-bottom:1px solid var(--gray-200);">DANGER</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:var(--gray-600); font-family:monospace;">Heart Rate</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#15803d; font-family:monospace;">&lt; 110 BPM</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#a16207; font-family:monospace;">110 – 130 BPM</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#dc2626; font-family:monospace;">&gt; 130 BPM</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:var(--gray-600); font-family:monospace;">Body Temperature</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#15803d; font-family:monospace;">&lt; 38.0 °C</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#a16207; font-family:monospace;">38.0 – 39.5 °C</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#dc2626; font-family:monospace;">&gt; 39.5 °C</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:var(--gray-600); font-family:monospace;">CO Level</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#15803d; font-family:monospace;">&lt; 50 ppm</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#a16207; font-family:monospace;">50 – 200 ppm</td>
+            <td style="padding:7px 14px; border-bottom:1px solid var(--gray-100); color:#dc2626; font-family:monospace;">&gt; 200 ppm</td>
+          </tr>
+          <tr>
+            <td style="padding:7px 14px; color:var(--gray-600); font-family:monospace;">Fall Detection</td>
+            <td colspan="3" style="padding:7px 14px; color:#7c3aed; font-family:monospace;">
+              Immediate FALL_DETECTED (highest priority — overrides all other statuses)
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/js/simulation.js"></script>
+</body>
+</html>

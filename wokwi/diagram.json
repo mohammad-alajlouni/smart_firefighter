@@ -1,0 +1,151 @@
+{
+  "version": 1,
+  "author": "Smart Firefighter Wearable System",
+  "editor": "wokwi",
+  "parts": [
+    {
+      "type": "wokwi-esp32-devkit-v1",
+      "id": "esp",
+      "top": 200,
+      "left": 240,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-ssd1306",
+      "id": "oled",
+      "top": -80,
+      "left": 228,
+      "attrs": { "address": "0x3c" }
+    },
+    {
+      "type": "wokwi-mpu6050",
+      "id": "imu",
+      "top": 448,
+      "left": 12,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-ds18b20",
+      "id": "ds",
+      "top": 252,
+      "left": 8,
+      "attrs": {}
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_pullup",
+      "top": 228,
+      "left": 144,
+      "rotate": 90,
+      "attrs": { "value": "4700" }
+    },
+    {
+      "type": "wokwi-potentiometer",
+      "id": "pot",
+      "top": 564,
+      "left": 252,
+      "attrs": { "value": "0.1" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_green",
+      "top": 80,
+      "left": 572,
+      "attrs": { "color": "green", "label": "OK" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_yellow",
+      "top": 160,
+      "left": 572,
+      "attrs": { "color": "yellow", "label": "WARN" }
+    },
+    {
+      "type": "wokwi-led",
+      "id": "led_red",
+      "top": 240,
+      "left": 572,
+      "attrs": { "color": "red", "label": "DANGER" }
+    },
+    {
+      "type": "wokwi-buzzer",
+      "id": "buzzer",
+      "top": 320,
+      "left": 572,
+      "attrs": { "volume": "0.5" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_led_g",
+      "top": 92,
+      "left": 532,
+      "rotate": 90,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_led_y",
+      "top": 172,
+      "left": 532,
+      "rotate": 90,
+      "attrs": { "value": "220" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_led_r",
+      "top": 252,
+      "left": 532,
+      "rotate": 90,
+      "attrs": { "value": "220" }
+    }
+  ],
+  "connections": [
+    ["esp:D21", "oled:SDA",  "blue",   []],
+    ["esp:D22", "oled:SCL",  "cyan",   []],
+    ["esp:3V3", "oled:VCC",  "red",    []],
+    ["esp:GND.1","oled:GND", "black",  []],
+
+    ["esp:D21", "imu:SDA",   "blue",   []],
+    ["esp:D22", "imu:SCL",   "cyan",   []],
+    ["esp:3V3", "imu:VCC",   "red",    []],
+    ["esp:GND.1","imu:GND",  "black",  []],
+
+    ["esp:D4",  "ds:DQ",     "orange", []],
+    ["esp:3V3", "ds:VCC",    "red",    []],
+    ["esp:GND.1","ds:GND",   "black",  []],
+    ["esp:3V3", "r_pullup:1","red",    []],
+    ["r_pullup:2","ds:DQ",   "orange", []],
+
+    ["esp:D34", "pot:SIG",   "purple", []],
+    ["esp:3V3", "pot:VCC",   "red",    []],
+    ["esp:GND.2","pot:GND",  "black",  []],
+
+    ["esp:D27", "r_led_g:1", "green",  []],
+    ["r_led_g:2","led_green:A","green",[]],
+    ["led_green:C","esp:GND.2","black",[]],
+
+    ["esp:D26", "r_led_y:1", "yellow", []],
+    ["r_led_y:2","led_yellow:A","yellow",[]],
+    ["led_yellow:C","esp:GND.2","black",[]],
+
+    ["esp:D25", "r_led_r:1", "red",    []],
+    ["r_led_r:2","led_red:A","red",    []],
+    ["led_red:C","esp:GND.2","black",  []],
+
+    ["esp:D18", "buzzer:1",  "orange", []],
+    ["buzzer:2","esp:GND.2", "black",  []]
+  ],
+  "notes": [
+    "GPIO21 = I2C SDA — shared by MPU6050 (addr 0x68) and SSD1306 OLED (addr 0x3C)",
+    "GPIO22 = I2C SCL — shared I2C clock",
+    "GPIO4  = DS18B20 1-Wire DATA (wokwi-ds18b20, real simulation)",
+    "4.7 kΩ pull-up resistor between 3V3 and DS18B20 DQ",
+    "GPIO34 = MQ-7 CO sensor analog output — simulated via potentiometer (wokwi-potentiometer)",
+    "GPIO18 = Buzzer positive terminal",
+    "GPIO25 = Red LED anode + 220 Ω series resistor (DANGER/FALL)",
+    "GPIO26 = Yellow LED anode + 220 Ω series resistor (WARNING)",
+    "GPIO27 = Green LED anode + 220 Ω series resistor (OK)",
+    "MAX30102 heart-rate sensor: no Wokwi part available — value generated in software (readHeartRate())",
+    "MPU6050 (wokwi-mpu6050): real simulation — rotate part in Wokwi to trigger fall detection"
+  ]
+}

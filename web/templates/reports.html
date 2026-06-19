@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reports &mdash; Smart Firefighter</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-title">
+      <h1>Smart Firefighter Wearable System</h1>
+      <p>IoT and LoRa Communication Simulation Dashboard</p>
+    </div>
+  </div>
+</header>
+
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="/"            class="nav-link">Dashboard</a>
+    <a href="/simulation"  class="nav-link">Simulation Lab</a>
+    <a href="/logs"        class="nav-link">Logs</a>
+    <a href="/reports"     class="nav-link active">Reports</a>
+  </div>
+</nav>
+
+<main class="page-content">
+
+  <div class="flex items-center gap-8 mb-16">
+    <h2 style="font-size:1rem; font-weight:700; color:var(--navy);">Session Summary Report</h2>
+    <div style="margin-left:auto; display:flex; gap:8px;">
+      <button class="btn btn-primary btn-sm" onclick="loadSummary()">Refresh</button>
+      <button class="btn btn-secondary btn-sm" onclick="exportSummary()">Save Report File</button>
+      <a href="/api/report/export-csv" class="btn btn-outline btn-sm">Export CSV</a>
+    </div>
+  </div>
+
+  <div id="report-saved" class="text-sm text-muted mb-16" style="display:none;"></div>
+
+  <!-- Totals -->
+  <div class="section-title">Reading Counts</div>
+  <div class="stat-grid mb-20">
+    <div class="stat-card">
+      <div class="stat-label">Total Readings</div>
+      <div class="stat-value" id="r-total">--</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid var(--green);">
+      <div class="stat-label">OK</div>
+      <div class="stat-value" id="r-ok" style="color:var(--green);">--</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid var(--orange);">
+      <div class="stat-label">WARNING</div>
+      <div class="stat-value" id="r-warn" style="color:var(--orange);">--</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid var(--red);">
+      <div class="stat-label">DANGER</div>
+      <div class="stat-value" id="r-danger" style="color:var(--red);">--</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid var(--purple);">
+      <div class="stat-label">FALL DETECTED</div>
+      <div class="stat-value" id="r-fall" style="color:var(--purple);">--</div>
+    </div>
+  </div>
+
+  <!-- Peak values -->
+  <div class="section-title">Peak Values</div>
+  <div class="stat-grid mb-20">
+    <div class="stat-card">
+      <div class="stat-label">Max Heart Rate</div>
+      <div><span class="stat-value" id="r-max-hr">--</span><span class="stat-unit">BPM</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Max Body Temperature</div>
+      <div><span class="stat-value" id="r-max-temp">--</span><span class="stat-unit">deg C</span></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Max CO Level</div>
+      <div><span class="stat-value" id="r-max-co">--</span><span class="stat-unit">ppm</span></div>
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="section-title">Session Timeline</div>
+  <div class="stat-grid mb-20">
+    <div class="stat-card">
+      <div class="stat-label">First Reading</div>
+      <div class="stat-value" id="r-first" style="font-size:1rem; font-weight:600; color:var(--gray-600);">--</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Last Reading</div>
+      <div class="stat-value" id="r-last" style="font-size:1rem; font-weight:600; color:var(--gray-600);">--</div>
+    </div>
+  </div>
+
+  <!-- Thresholds reference -->
+  <div class="section-title">Configured Alert Thresholds</div>
+  <div class="card mb-20">
+    <table style="font-size:.82rem;">
+      <thead>
+        <tr>
+          <th>Parameter</th><th>OK (below)</th><th>WARNING (below)</th><th>DANGER (above)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Heart Rate</td><td>110 BPM</td><td>130 BPM</td><td>130 BPM</td></tr>
+        <tr><td>Body Temperature</td><td>38.0 deg C</td><td>39.5 deg C</td><td>39.5 deg C</td></tr>
+        <tr><td>CO Level</td><td>50 ppm</td><td>200 ppm</td><td>200 ppm</td></tr>
+        <tr><td>Fall Detection</td><td colspan="3">Immediate FALL_DETECTED (highest priority)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</main>
+
+<div class="toast-container" id="toast-container"></div>
+<script src="/static/js/app.js"></script>
+<script>
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = (val == null || val === '') ? '--' : val;
+}
+
+async function loadSummary() {
+  try {
+    const res  = await fetch('/api/report/summary');
+    const data = await res.json();
+    setText('r-total',    data.total_readings);
+    setText('r-ok',       data.ok_count);
+    setText('r-warn',     data.warning_count);
+    setText('r-danger',   data.danger_count);
+    setText('r-fall',     data.fall_count);
+    setText('r-max-hr',   data.max_heart_rate);
+    setText('r-max-temp', data.max_body_temp);
+    setText('r-max-co',   data.max_co_level);
+    setText('r-first',    data.first_timestamp);
+    setText('r-last',     data.last_timestamp);
+  } catch (e) {
+    showToast('Could not load summary: ' + e.message, 'error');
+  }
+}
+
+async function exportSummary() {
+  try {
+    const res  = await fetch('/api/report/export-summary');
+    const data = await res.json();
+    const el = document.getElementById('report-saved');
+    el.style.display = 'block';
+    el.textContent = 'Report saved to: ' + data.path;
+    showToast('Report saved: ' + data.filename, 'success');
+  } catch (e) {
+    showToast('Could not save report: ' + e.message, 'error');
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadSummary);
+</script>
+</body>
+</html>

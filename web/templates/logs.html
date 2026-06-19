@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Logs &mdash; Smart Firefighter</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-title">
+      <h1>Smart Firefighter Wearable System</h1>
+      <p>IoT and LoRa Communication Simulation Dashboard</p>
+    </div>
+  </div>
+</header>
+
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="/"            class="nav-link">Dashboard</a>
+    <a href="/simulation"  class="nav-link">Simulation Lab</a>
+    <a href="/logs"        class="nav-link active">Logs</a>
+    <a href="/reports"     class="nav-link">Reports</a>
+  </div>
+</nav>
+
+<main class="page-content">
+
+  <!-- Filter bar -->
+  <div class="card mb-20">
+    <div class="section-title">Filter Logs</div>
+    <div class="filter-row">
+      <div class="form-group">
+        <label class="form-label" for="filter-status">Status</label>
+        <select id="filter-status">
+          <option value="">All Statuses</option>
+          <option value="OK">OK</option>
+          <option value="WARNING">WARNING</option>
+          <option value="DANGER">DANGER</option>
+          <option value="FALL_DETECTED">FALL DETECTED</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="filter-ff">Firefighter ID</label>
+        <input type="text" id="filter-ff" placeholder="e.g. FF-01" style="width:140px;">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="filter-limit">Limit</label>
+        <input type="number" id="filter-limit" value="200" min="1" max="5000" style="width:90px;">
+      </div>
+      <div class="form-group" style="justify-content:flex-end;">
+        <label class="form-label">&nbsp;</label>
+        <button class="btn btn-primary" onclick="loadLogs()">Refresh</button>
+      </div>
+      <div class="form-group" style="justify-content:flex-end; margin-left:auto;">
+        <label class="form-label">&nbsp;</label>
+        <a href="/api/report/export-csv" class="btn btn-secondary">Export CSV</a>
+      </div>
+    </div>
+    <div id="log-count" class="text-sm text-muted"></div>
+  </div>
+
+  <!-- Logs table -->
+  <div class="log-card">
+    <div class="log-card-header">
+      <h2>Telemetry Log Records</h2>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th><th>FF ID</th><th>HR (BPM)</th><th>Temp (C)</th>
+            <th>CO (ppm)</th><th>Fall</th><th>Status</th><th>Alert Message</th>
+          </tr>
+        </thead>
+        <tbody id="logs-tbody">
+          <tr><td colspan="8" class="text-muted" style="text-align:center; padding:20px;">
+            Loading...
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast-container" id="toast-container"></div>
+<script src="/static/js/app.js"></script>
+<script>
+async function loadLogs() {
+  const status = document.getElementById('filter-status').value;
+  const ff     = document.getElementById('filter-ff').value.trim();
+  const limit  = document.getElementById('filter-limit').value || 200;
+
+  let url = `/api/logs?limit=${limit}`;
+  if (status) url += `&status=${encodeURIComponent(status)}`;
+  if (ff)     url += `&firefighter_id=${encodeURIComponent(ff)}`;
+
+  const tbody = document.getElementById('logs-tbody');
+  tbody.innerHTML = '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:16px;">Loading...</td></tr>';
+
+  try {
+    const res  = await fetch(url);
+    const data = await res.json();
+    document.getElementById('log-count').textContent =
+      `Showing ${data.count} record${data.count !== 1 ? 's' : ''}`;
+
+    if (!data.records.length) {
+      tbody.innerHTML = '<tr><td colspan="8" class="text-muted" style="text-align:center;padding:16px;">No records found.</td></tr>';
+      return;
+    }
+
+    const statusClass = { OK:'ok', WARNING:'warning', DANGER:'danger', FALL_DETECTED:'fall' };
+    tbody.innerHTML = data.records.map(r => {
+      const sc = statusClass[r.status] || '';
+      return `<tr class="${sc ? 'row-'+sc : ''}">
+        <td>${r.timestamp||''}</td>
+        <td>${r.firefighter_id||''}</td>
+        <td>${r.heart_rate||''}</td>
+        <td>${r.body_temp||''}</td>
+        <td>${r.co_level||''}</td>
+        <td>${r.fall_detected==='True'||r.fall_detected===true ? 'YES' : 'No'}</td>
+        <td><span class="status-badge status-${r.status||'unknown'}">${r.status||''}</span></td>
+        <td>${r.alert_message||''}</td>
+      </tr>`;
+    }).join('');
+  } catch (e) {
+    tbody.innerHTML = `<tr><td colspan="8" style="color:var(--red);text-align:center;padding:16px;">Error: ${e.message}</td></tr>`;
+  }
+}
+
+document.addEventListener('DOMContentLoaded', loadLogs);
+</script>
+</body>
+</html>

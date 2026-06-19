@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "node-red-dashboard": "^3.6.6",
+    "node-red-node-ui-table": "^0.4.5"
+  }
+}

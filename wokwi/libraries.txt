@@ -1,0 +1,25 @@
+# Wokwi Library Requirements
+# ──────────────────────────────────────────────────────────────────────────────
+# Copy this file into your Wokwi project (libraries.txt tab) OR install all
+# libraries in Arduino IDE / PlatformIO before flashing to real hardware.
+#
+# Wokwi format: one library name per line (version optional with @x.y.z)
+# ──────────────────────────────────────────────────────────────────────────────
+
+# DS18B20 temperature sensor (real 1-Wire simulation in Wokwi)
+OneWire
+DallasTemperature
+
+# MPU6050 IMU / fall detection (real I2C simulation in Wokwi)
+Adafruit MPU6050
+Adafruit Unified Sensor
+
+# SSD1306 OLED display (real I2C simulation in Wokwi)
+Adafruit SSD1306
+Adafruit GFX Library
+
+# JSON serialisation for MQTT payload
+ArduinoJson
+
+# MQTT client (WiFi/MQTT disabled in Wokwi; works on real ESP32 hardware)
+PubSubClient

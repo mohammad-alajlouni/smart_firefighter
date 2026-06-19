@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Firefighter Wearable System</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header class="site-header">
+  <div class="header-inner">
+    <div class="header-title">
+      <h1>Smart Firefighter Wearable System</h1>
+      <p>IoT and LoRa Communication Simulation Dashboard</p>
+    </div>
+    <div class="header-badges">
+      <span class="badge" id="badge-mqtt">
+        <span class="label">MQTT</span>
+        <span class="value">--</span>
+      </span>
+      <span class="badge">
+        <span class="label">Broker</span>
+        <span class="value">{{ broker }}:{{ port }}</span>
+      </span>
+      <span class="badge">
+        <span class="label">Topic</span>
+        <span class="value">{{ topic }}</span>
+      </span>
+      <span class="badge">
+        <span class="label">FF ID</span>
+        <span class="value">{{ firefighter_id }}</span>
+      </span>
+    </div>
+  </div>
+</header>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────────── -->
+<nav class="site-nav">
+  <div class="nav-inner">
+    <a href="/"            class="nav-link active">Dashboard</a>
+    <a href="/simulation"  class="nav-link">Simulation Lab</a>
+    <a href="/logs"        class="nav-link">Logs</a>
+    <a href="/reports"     class="nav-link">Reports</a>
+  </div>
+</nav>
+
+<!-- ── Page content ────────────────────────────────────────────────────────── -->
+<main class="page-content">
+
+  <!-- WS status -->
+  <div class="ws-status-bar">
+    <div class="ws-dot" id="ws-dot"></div>
+    <span class="ws-label">Connecting...</span>
+    <span style="margin-left:auto; font-size:.7rem;">
+      Readings: <strong id="stat-total">0</strong>
+      &nbsp;|&nbsp; Warnings: <strong id="stat-warning">0</strong>
+      &nbsp;|&nbsp; Dangers: <strong id="stat-danger">0</strong>
+      &nbsp;|&nbsp; Falls: <strong id="stat-fall">0</strong>
+    </span>
+  </div>
+
+  <!-- System Flow Visual -->
+  <div class="flow-bar mb-20">
+    <div class="flow-node" id="fn-sensors">
+      <div class="fn-icon">[S]</div>
+      <div class="fn-label">Sensors</div>
+      <div class="fn-sub">HR / Temp / CO / Fall</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-node" id="fn-esp32">
+      <div class="fn-icon">[P]</div>
+      <div class="fn-label">ESP32 Logic</div>
+      <div class="fn-sub">Classify / Alert</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-node" id="fn-mqtt">
+      <div class="fn-icon">[M]</div>
+      <div class="fn-label">MQTT / LoRa</div>
+      <div class="fn-sub">broker.emqx.io</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-node" id="fn-dashboard">
+      <div class="fn-icon">[D]</div>
+      <div class="fn-label">Web Dashboard</div>
+      <div class="fn-sub">Live monitoring</div>
+    </div>
+    <div class="flow-arrow">&rarr;</div>
+    <div class="flow-node" id="fn-logs">
+      <div class="fn-icon">[L]</div>
+      <div class="fn-label">Logs &amp; Reports</div>
+      <div class="fn-sub">CSV / Summary</div>
+    </div>
+  </div>
+
+  <!-- Control + Telemetry row -->
+  <div class="two-col mb-20">
+
+    <!-- Control Panel -->
+    <div class="card control-panel">
+      <div class="section-title">Simulation Control</div>
+
+      <div class="sim-status-indicator stopped" id="sim-status-indicator">
+        <div class="dot"></div>
+        <span id="sim-status-text">Stopped</span>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label" for="scenario-select">Scenario</label>
+        <select id="scenario-select">
+          <option value="normal">Normal Condition</option>
+          <option value="high_temperature">High Temperature</option>
+          <option value="high_co">High CO Level</option>
+          <option value="high_heart_rate">High Heart Rate</option>
+          <option value="fall_detection">Fall Detection</option>
+          <option value="multiple_hazards">Multiple Hazards</option>
+          <option value="random">Random</option>
+        </select>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary btn-full" id="btn-start">Start Simulation</button>
+        <button class="btn btn-danger btn-full" id="btn-stop" disabled>Stop</button>
+      </div>
+
+      <button class="btn btn-outline btn-full" id="btn-publish-once">
+        Publish Once
+      </button>
+
+      <div style="border-top:1px solid var(--gray-100); padding-top:10px; margin-top:4px;">
+        <div class="section-title">Note</div>
+        <p class="text-sm text-muted">
+          MQTT is used to emulate the logical data-flow of LoRa communication.
+          It does not simulate LoRa physical-layer characteristics.
+        </p>
+      </div>
+    </div>
+
+    <!-- Telemetry cards -->
+    <div>
+      <div class="section-title">Live Telemetry</div>
+      <div class="telemetry-grid">
+
+        <div class="tele-card">
+          <div class="card-title">Heart Rate</div>
+          <div class="card-value"><span id="val-hr">--</span><span class="card-unit">BPM</span></div>
+        </div>
+
+        <div class="tele-card">
+          <div class="card-title">Body Temperature</div>
+          <div class="card-value"><span id="val-temp">--</span><span class="card-unit">deg C</span></div>
+        </div>
+
+        <div class="tele-card">
+          <div class="card-title">CO Level</div>
+          <div class="card-value"><span id="val-co">--</span><span class="card-unit">ppm</span></div>
+        </div>
+
+        <div class="tele-card">
+          <div class="card-title">Fall Detected</div>
+          <div class="card-value" id="val-fall" style="font-size:1.2rem;">--</div>
+        </div>
+
+        <div class="tele-card" style="grid-column: span 2">
+          <div class="card-title">Current Status</div>
+          <div style="margin-top:6px;">
+            <span class="status-badge status-unknown" id="val-status">--</span>
+          </div>
+          <div class="card-title" style="margin-top:10px;">Alert Message</div>
+          <div class="text-sm" id="val-alert" style="color:var(--gray-600); margin-top:4px;">--</div>
+          <div class="card-title" style="margin-top:10px;">Last Updated</div>
+          <div class="text-sm text-muted" id="val-ts">--</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Local Alert Simulation Panel -->
+  <div class="alert-panel mb-20">
+    <div class="section-title">Local Alert Simulation &mdash; Wearable Device Output</div>
+    <div class="alert-devices">
+
+      <div class="device-box">
+        <div class="device-label">LED Status</div>
+        <div class="led" id="led-indicator"></div>
+        <div class="text-sm text-muted">Colour indicator</div>
+      </div>
+
+      <div class="device-box">
+        <div class="device-label">Buzzer</div>
+        <div class="buzzer-ring" id="buzzer-ring">
+          <span id="buzzer-ring-text">OFF</span>
+        </div>
+        <div class="buzzer-text" id="buzzer-text">Inactive</div>
+      </div>
+
+      <div class="device-box">
+        <div class="device-label">OLED Display</div>
+        <div class="oled-screen" id="oled-screen">STANDBY</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Real-time charts -->
+  <div class="section-title">Sensor Trend Charts (last 40 readings)</div>
+  <div class="charts-grid mb-20">
+    <div class="chart-card">
+      <h3>Heart Rate (BPM)</h3>
+      <div class="chart-wrap"><canvas id="chart-hr"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>Body Temperature (deg C)</h3>
+      <div class="chart-wrap"><canvas id="chart-temp"></canvas></div>
+    </div>
+    <div class="chart-card">
+      <h3>CO Level (ppm)</h3>
+      <div class="chart-wrap"><canvas id="chart-co"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Event log table -->
+  <div class="log-card">
+    <div class="log-card-header">
+      <h2>Live Event Log</h2>
+      <div class="flex gap-8">
+        <a href="/logs" class="btn btn-outline btn-sm">Full Log</a>
+        <a href="/api/report/export-csv" class="btn btn-secondary btn-sm">Export CSV</a>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th><th>FF ID</th><th>HR (BPM)</th><th>Temp (C)</th>
+            <th>CO (ppm)</th><th>Fall</th><th>Status</th><th>Alert Message</th>
+          </tr>
+        </thead>
+        <tbody id="log-tbody">
+          <tr><td colspan="8" class="text-muted" style="text-align:center; padding:20px;">
+            Start simulation to see live events.
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</main>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>
