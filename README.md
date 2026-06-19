@@ -72,13 +72,43 @@ Web Dashboard   Logger / Analyzer
 
 ## How to Run
 
-**Requirements:** Python 3.10 or newer, internet connection.
+### Step 1 — Install Python
+
+If Python is not already installed, download it from the official website:
+
+**https://www.python.org/downloads/**
+
+Download the latest **Python 3.10+** installer, run it, and make sure to check **"Add Python to PATH"** during installation.
+
+---
+
+### Step 2 — Clone the project
+
+Open a terminal (Command Prompt or PowerShell) and run:
+
+```
+git clone https://github.com/mohammad-alajlouni/smart_firefighter.git
+```
+
+---
+
+### Step 3 — Enter the project folder
+
+```
+cd smart_firefighter
+```
+
+---
+
+### Step 4 — Start the simulation
 
 ```
 py run.py
 ```
 
 That is the only command needed. The launcher automatically checks which packages are missing, installs only those, then starts the server.
+
+---
 
 Once running, open your browser at:
 
